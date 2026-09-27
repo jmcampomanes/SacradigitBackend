@@ -139,6 +139,21 @@ const schema = a.schema({
     allow.groups(['itech']).to(['read']),
   ]),
 
+  // Fundraising goals shown on the Donations pages (admin + parishioner).
+  // "Raised" is computed in the browser from Donation rows whose purpose
+  // matches the goal name.
+  DonationGoal: a.model({
+    name: a.string().required(),
+    targetAmount: a.float().required(),
+    deadline: a.date(),
+    description: a.string(),
+    active: a.boolean().default(true),
+  }).authorization(allow => [
+    allow.authenticated().to(['read']),
+    allow.groups(['admin']),
+    allow.groups(['staff', 'itech']).to(['read']), // Secretary: view only
+  ]),
+
   Announcement: a.model({
     title: a.string().required(),
     body: a.string().required(),
