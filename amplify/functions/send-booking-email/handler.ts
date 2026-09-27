@@ -4,9 +4,8 @@ import { env } from '$amplify/env/sendBookingEmail';
 
 const ses = new SESv2Client();
 
-// This mutation is callable with the public API key, so anyone holding the
-// key could use it to send mail. Keep it to one plain recipient and short
-// messages until real auth is added.
+// Any signed-in user can call this mutation, so keep it to one plain
+// recipient and short messages.
 const EMAIL_RE = /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/;
 const MAX_SUBJECT = 200;
 const MAX_BODY = 5000;

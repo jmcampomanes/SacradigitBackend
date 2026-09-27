@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import type { AppSyncIdentityCognito } from 'aws-lambda';
 import { Amplify } from 'aws-amplify';
 import { generateClient } from 'aws-amplify/data';
 import { getAmplifyDataClientConfig } from '@aws-amplify/backend/function/runtime';
@@ -64,6 +65,11 @@ export const handler: Schema['checkIn']['functionHandler'] = async (event) => {
 
   const id = sha256Hex(`${sessionId}:${parishionerKey}`);
 
+  // The signed-in caller owns the record (allow.owner() reads it). Same
+  // format Amplify writes for owner fields: "<sub>::<username>".
+  const identity = event.identity as AppSyncIdentityCognito | null;
+  const owner = identity?.sub && identity.username ? `${identity.sub}::${identity.username}` : null;
+
   const existing = await getCheckIn(id);
   if (existing) return { ok: true, already: true, checkIn: existing };
 
@@ -77,6 +83,7 @@ export const handler: Schema['checkIn']['functionHandler'] = async (event) => {
       massTime: session.massTime,
       title: session.title,
       checkedInAt: now.toISOString(),
+      owner,
     },
     { selectionSet: CHECK_IN_FIELDS },
   );

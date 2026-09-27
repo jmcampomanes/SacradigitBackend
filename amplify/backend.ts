@@ -8,11 +8,11 @@ import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Stack } from 'aws-cdk-lib';
 
 /**
- * After `npx ampx sandbox` deploys this, go to:
- * AWS Console -> Cognito -> User pools -> (your pool) -> Groups
- * and create two groups: "staff" and "admin".
- * Assign yourself to "admin" so you can test the admin pages.
- * (Equivalent to setting role: 'admin' on a Firestore /users/{uid} doc.)
+ * Roles are the Cognito groups admin / staff / itech / media, created by
+ * auth/resource.ts. To bootstrap the first IT account: sign up on the site,
+ * then add that user to the "itech" group (Cognito console -> User pools ->
+ * (your pool) -> Groups -> itech -> Add user). From then on ITech manages
+ * everyone in Sacra ITech -> Roles & Access.
  */
 const backend = defineBackend({
   auth,
