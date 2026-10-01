@@ -139,6 +139,22 @@ const schema = a.schema({
     allow.groups(['itech']).to(['read']),
   ]),
 
+  // Parish contact details shown by the Parish Assistant ("How do I contact
+  // the parish?"). The app keeps ONE record; ITech and the Head Admin edit it
+  // (ITech → Parish Info, Admin → Parish Info). Not deletable from the app.
+  ParishInfo: a.model({
+    officeHoursEn: a.string(),
+    officeHoursFil: a.string(),
+    phone: a.string(),
+    email: a.string(),
+    facebook: a.string(),
+    updatedByName: a.string(),
+  }).authorization(allow => [
+    allow.publicApiKey().to(['read']),
+    allow.authenticated().to(['read']),
+    allow.groups(['admin', 'itech']).to(['create', 'read', 'update']),
+  ]),
+
   // Fundraising goals shown on the Donations pages (admin + parishioner).
   // "Raised" is computed in the browser from Donation rows whose purpose
   // matches the goal name.
@@ -306,9 +322,9 @@ const schema = a.schema({
   }).authorization(allow => [
     allow.publicApiKey().to(['read']),
     allow.authenticated().to(['read']),
-    allow.groups(['admin']),
-    allow.groups(['staff']).to(['read']), // Secretary: schedules are Head Admin only
-    allow.groups(['itech']).to(['read']),
+    // ITech edits schedules (Sacra ITech → Service Schedules); delete = "Reset to default".
+    allow.groups(['admin', 'itech']),
+    allow.groups(['staff']).to(['read']), // Secretary: schedules are Head Admin / ITech only
   ]),
 
   // ---------- Booking notifications ----------

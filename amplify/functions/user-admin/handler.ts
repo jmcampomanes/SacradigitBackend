@@ -198,7 +198,10 @@ const setUserEnabled: Schema['setUserEnabled']['functionHandler'] = async (event
 const operations = { listUsers, setUserRole, createStaffUser, setUserEnabled };
 
 export const handler = async (event: any, context: any, callback: any) => {
-  const op = operations[event.info?.fieldName as keyof typeof operations];
-  if (!op) throw new Error(`Unknown operation ${event.info?.fieldName}`);
+  // Amplify Gen 2 function handlers get the field name at the top level
+  // (event.fieldName); plain AppSync Lambda resolvers use event.info.fieldName.
+  const fieldName = event.fieldName ?? event.info?.fieldName;
+  const op = operations[fieldName as keyof typeof operations];
+  if (!op) throw new Error(`Unknown operation ${fieldName}`);
   return op(event, context, callback);
 };
