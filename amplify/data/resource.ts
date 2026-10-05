@@ -427,6 +427,73 @@ const schema = a.schema({
     .handler(a.handler.function(checkInFunction))
     .authorization(allow => [allow.authenticated()]),
 
+  // ---------- Parish office chat ----------
+
+  // One conversation per parishioner, threadId = their Cognito sub. On a
+  // reply, the frontend sets owner to the parishioner's own owner value
+  // (copied from one of their earlier messages) so they can read it; admin
+  // and staff aren't limited by owner since they also have group access.
+  ChatMessage: a.model({
+    threadId: a.string().required(),      // the parishioner's Cognito sub (user id)
+    fromOffice: a.boolean(),              // true = sent by Head Admin or Secretary
+    senderName: a.string(),
+    parishionerName: a.string(),
+    body: a.string().required(),
+    readByOffice: a.boolean(),
+    readByParishioner: a.boolean(),
+    // Explicit field, not the model's auto-managed timestamp: the GSI sort
+    // key must be a field declared here, so the frontend sets this itself
+    // (e.g. new Date().toISOString()) when creating a message.
+    createdAt: a.datetime().required(),
+  })
+  .secondaryIndexes((index) => [index('threadId').sortKeys(['createdAt'])])
+  .authorization((allow) => [
+    allow.owner().to(['create', 'read', 'update']),
+    allow.groups(['admin', 'staff']).to(['create', 'read', 'update', 'delete']),
+    allow.groups(['itech']).to(['read']),
+  ]),
+
+  // ---------- Prayer Wall + Ministry Sign-ups ----------
+
+  // Prayer requests moderated by the parish office before they're shown publicly.
+  PrayerRequest: a.model({
+    body: a.string().required(),
+    authorName: a.string(),        // empty when posted anonymously
+    anonymous: a.boolean(),
+    authorKey: a.string(),         // the poster's Cognito sub, so they can follow their own requests
+    status: a.enum(['pending', 'approved', 'rejected', 'removed']),
+    moderationNote: a.string(),
+  }).authorization((allow) => [
+    allow.authenticated().to(['create', 'read']),
+    allow.groups(['admin', 'staff']).to(['create', 'read', 'update', 'delete']),
+    allow.groups(['itech']).to(['read']),
+  ]),
+
+  // One row per "I prayed for this".
+  PrayerReaction: a.model({
+    requestId: a.id().required(),
+    reactorKey: a.string().required(),   // reacting user's Cognito sub
+  }).authorization((allow) => [
+    allow.authenticated().to(['create', 'read']),
+    allow.groups(['admin', 'staff']).to(['read', 'delete']),
+  ]),
+
+  // Lector / choir / altar server / usher sign-ups per Mass.
+  MinistrySignup: a.model({
+    ministry: a.string().required(),     // 'lector' | 'choir' | 'altar-server' | 'usher'
+    massDate: a.date().required(),
+    massTime: a.string(),
+    massTitle: a.string(),
+    volunteerId: a.string().required(),  // volunteer's Cognito sub
+    volunteerName: a.string(),
+    swapRequested: a.boolean(),
+  }).authorization((allow) => [
+    allow.ownerDefinedIn('volunteerId').identityClaim('sub').to(['create', 'read', 'update', 'delete']),
+    allow.authenticated().to(['read', 'update']),   // so a parishioner can take over a slot marked for swap
+    allow.groups(['admin', 'staff']).to(['create', 'read', 'update', 'delete']),
+    allow.groups(['itech']).to(['read']),
+  ]),
+
   // ---------- Parish-wide summaries (no contact details) ----------
 
   // Honor roll: [{ name, key, streak }] — donors with 3+ consecutive months of
