@@ -101,7 +101,8 @@ const schema = a.schema({
     massDate: a.date(),        // assigned mass date, null until scheduled
     massTime: a.string(),
     offering: a.float(),
-    status: a.enum(['pending', 'scheduled', 'completed']),
+    status: a.enum(['pending', 'scheduled', 'completed', 'cancelled', 'rejected']),
+    cancelReason: a.string(),
   }).authorization(allow => [
     allow.owner(),
     allow.groups(['admin', 'staff']),
@@ -509,8 +510,9 @@ const schema = a.schema({
     .handler(a.handler.function(donationTotals))
     .authorization(allow => [allow.authenticated()]),
 
-  // [{ massDate, massTime, type, names, startTime, endTime }] for Mass
-  // intentions between from and to (inclusive). No donor, no offering.
+  // [{ massDate, massTime, type, names, startTime, endTime, status }] for Mass
+  // intentions between from and to (inclusive), excluding cancelled/rejected.
+  // No donor, no offering.
   communityIntentions: a.query()
     .arguments({
       from: a.date().required(),

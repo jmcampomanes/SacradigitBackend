@@ -15,7 +15,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /**
  * Mass intentions offered between `from` and `to` (inclusive, YYYY-MM-DD),
  * across all parishioners, for the community intentions list. Only what is
- * read out at Mass is returned: no donor, no offering, no ids.
+ * read out at Mass is returned: no donor, no offering, no ids. Cancelled and
+ * rejected intentions are left out.
  */
 export const handler: Schema['communityIntentions']['functionHandler'] = async (event) => {
   const { from, to } = event.arguments;
@@ -27,22 +28,23 @@ export const handler: Schema['communityIntentions']['functionHandler'] = async (
 
   const intentions: {
     massDate: string | null; massTime: string | null; type: string | null;
-    names: unknown; startTime: string | null; endTime: string | null;
+    names: unknown; startTime: string | null; endTime: string | null; status: string | null;
   }[] = [];
   let nextToken: string | null | undefined;
 
   do {
     const res = await client.models.MassIntention.list({
       filter: { massDate: { between: [from, to] } },
-      selectionSet: ['massDate', 'massTime', 'type', 'names', 'startTime', 'endTime'],
+      selectionSet: ['massDate', 'massTime', 'type', 'names', 'startTime', 'endTime', 'status'],
       limit: 1000,
       nextToken,
     });
     if (res.errors?.length) throw new Error(JSON.stringify(res.errors));
     for (const m of res.data) {
+      if (m.status === 'cancelled' || m.status === 'rejected') continue;
       intentions.push({
         massDate: m.massDate, massTime: m.massTime, type: m.type,
-        names: m.names, startTime: m.startTime, endTime: m.endTime,
+        names: m.names, startTime: m.startTime, endTime: m.endTime, status: m.status,
       });
     }
     nextToken = res.nextToken;
