@@ -149,6 +149,7 @@ const schema = a.schema({
     phone: a.string(),
     email: a.string(),
     facebook: a.string(),
+    location: a.string(),
     updatedByName: a.string(),
   }).authorization(allow => [
     allow.publicApiKey().to(['read']),
@@ -392,13 +393,22 @@ const schema = a.schema({
     massTime: a.string().required(),
     title: a.string(),
     checkedInAt: a.datetime().required(),
+    // Explicit field (not an implicit allow.owner() field) — implicit owner
+    // fields are only writable through Create/UpdateInput when the owner rule
+    // itself includes 'create'/'update', which this one deliberately doesn't
+    // (only the checkIn function may write, via its IAM grant below). Without
+    // an explicit field, "owner" doesn't exist on CreateMassCheckInInput at
+    // all, which is what was breaking every check-in. identityClaim is 'sub',
+    // not the default 'cognito:username', for the same reason as ChatMessage
+    // (see that model): that claim isn't on every token this app presents.
+    owner: a.string(),
   })
   .secondaryIndexes(index => [
     index('parishionerKey'),   // one person's history
     index('sessionId'),        // a session's live count
   ])
   .authorization(allow => [
-    allow.owner().to(['read']),
+    allow.ownerDefinedIn('owner').identityClaim('sub').to(['read']),
     allow.groups(['admin', 'staff']).to(['read']),
     allow.groups(['itech']).to(['read']),
   ]),
@@ -442,6 +452,13 @@ const schema = a.schema({
     body: a.string().required(),
     readByOffice: a.boolean(),
     readByParishioner: a.boolean(),
+    // Explicit field (not an implicit allow.owner() field) so office replies
+    // can set it to the parishioner's identity, letting them read the reply.
+    // Holds the parishioner's Cognito sub (same value as threadId) — identityClaim
+    // is 'sub', not the default 'cognito:username', because that claim isn't on
+    // every token this app presents to AppSync (group-based rules below still
+    // work regardless, since 'cognito:groups' is on both token types).
+    owner: a.string(),
     // Explicit field, not the model's auto-managed timestamp: the GSI sort
     // key must be a field declared here, so the frontend sets this itself
     // (e.g. new Date().toISOString()) when creating a message.
@@ -449,7 +466,7 @@ const schema = a.schema({
   })
   .secondaryIndexes((index) => [index('threadId').sortKeys(['createdAt'])])
   .authorization((allow) => [
-    allow.owner().to(['create', 'read', 'update']),
+    allow.ownerDefinedIn('owner').identityClaim('sub').to(['create', 'read', 'update']),
     allow.groups(['admin', 'staff']).to(['create', 'read', 'update', 'delete']),
     allow.groups(['itech']).to(['read']),
   ]),

@@ -65,10 +65,10 @@ export const handler: Schema['checkIn']['functionHandler'] = async (event) => {
 
   const id = sha256Hex(`${sessionId}:${parishionerKey}`);
 
-  // The signed-in caller owns the record (allow.owner() reads it). Same
-  // format Amplify writes for owner fields: "<sub>::<username>".
+  // The signed-in caller owns the record (ownerDefinedIn('owner'), identityClaim
+  // 'sub' — see data/resource.ts for why plain sub, not "<sub>::<username>").
   const identity = event.identity as AppSyncIdentityCognito | null;
-  const owner = identity?.sub && identity.username ? `${identity.sub}::${identity.username}` : null;
+  const owner = identity?.sub ?? null;
 
   const existing = await getCheckIn(id);
   if (existing) return { ok: true, already: true, checkIn: existing };
@@ -80,7 +80,7 @@ export const handler: Schema['checkIn']['functionHandler'] = async (event) => {
       parishionerName: parishionerName.trim().replace(/\s+/g, ' '),
       parishionerKey,
       massDate: session.massDate,
-      massTime: session.massTime,
+      massTime: session.massTime || '',
       title: session.title,
       checkedInAt: now.toISOString(),
       owner,
