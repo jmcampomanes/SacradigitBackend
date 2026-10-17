@@ -7,6 +7,7 @@ import { faithfulGivers } from '../functions/faithful-givers/resource';
 import { donationTotals } from '../functions/donation-totals/resource';
 import { communityIntentions } from '../functions/community-intentions/resource';
 import { userAdmin } from '../functions/user-admin/resource';
+import { parishAssistantChat } from '../functions/parish-assistant-chat/resource';
 
 /**
  * Role-based access. Roles are Cognito groups (see auth/resource.ts):
@@ -341,6 +342,25 @@ const schema = a.schema({
     .handler(a.handler.function(sendBookingEmail))
     .authorization(allow => [allow.authenticated()]),
 
+  // ---------- Parish Assistant chat ----------
+
+  // Replaces server/ai-chat's local-only Express proxy: the same job (hide
+  // the OpenRouter key, require a signed-in parishioner), but reachable from
+  // anywhere, not just localhost. history/context travel as JSON strings
+  // (the handler JSON.parses them) rather than a.json() arguments — no
+  // precedent for AWSJSON as a custom mutation ARGUMENT elsewhere in this
+  // schema, only as a return type, so this sticks to the proven shape.
+  chatWithAssistant: a.mutation()
+    .arguments({
+      message: a.string().required(),
+      history: a.string(),   // JSON-stringified [{role, content}, ...]
+      context: a.string(),   // JSON-stringified live parish facts
+      lang: a.string(),      // 'en' | 'fil'
+    })
+    .returns(a.string())
+    .handler(a.handler.function(parishAssistantChat))
+    .authorization(allow => [allow.authenticated()]),
+
   // ---------- Double-booking check ----------
 
   // One booked slot, with no personal details.
@@ -413,11 +433,16 @@ const schema = a.schema({
     allow.groups(['itech']).to(['read']),
   ]),
 
-  // Per-parishioner settings.
+  // Per-parishioner settings and My Profile details. Email isn't stored here —
+  // it's a Cognito attribute edited through the real account, not this record.
   ParishionerPreference: a.model({
     parishionerKey: a.string().required(),
     displayName: a.string(),
     showOnHonorRoll: a.boolean().default(true),  // "Faithful Givers" list opt-out
+    phone: a.string(),
+    address: a.string(),
+    about: a.string(),
+    avatarKey: a.string(),   // bare S3 path under avatars/{identityId}/..., resolved via getUrl()
   })
   .secondaryIndexes(index => [index('parishionerKey')])
   .authorization(allow => [

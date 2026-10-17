@@ -20,5 +20,9 @@ export const storage = defineStorage({
       allow.groups(['admin']).to(['read', 'write', 'delete']),
       allow.groups(['staff']).to(['read', 'write']), // Secretary: no delete
     ],
+    // Profile photos — each signed-in identity only reaches its own folder.
+    'avatars/{entity_id}/*': [
+      allow.entity('identity').to(['read', 'write', 'delete']),
+    ],
   }),
 });
