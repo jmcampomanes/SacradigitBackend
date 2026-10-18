@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>notifyParishioner — email layout preview</title>
+<style>
+  body { margin: 0; background: #e5e7eb; font-family: Segoe UI, Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 24px 0 80px; }
+  .label {
+    max-width: 520px; margin: 0 auto 8px; color: #374151; font-size: 13px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .gap { height: 36px; }
+  iframe { width: 100%; max-width: 520px; display: block; margin: 0 auto; border: 0; height: 520px; background: #fff; border-radius: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="label">service-update &mdash; confirmed (parishioner self-booking)</div>
+  <iframe id="f1"></iframe>
+  <div class="gap"></div>
+
+  <div class="label">service-update &mdash; declined</div>
+  <iframe id="f2" style="height:360px;"></iframe>
+  <div class="gap"></div>
+
+  <div class="label">certificate-ready</div>
+  <iframe id="f3" style="height:340px;"></iframe>
+  <div class="gap"></div>
+
+  <div class="label">signup-code</div>
+  <iframe id="f4" style="height:360px;"></iframe>
+
+</div>
+
+<script>
+/* This mirrors shell()/factSheet()/esc() from handler.ts exactly, so what
+   you see here is what Gmail actually renders — it's not re-implemented,
+   just copy-pasted out of the Lambda so it can run in a plain browser. */
+
+const SITE_URL = 'https://jmcampomanes.github.io/CAPSTONE_SACRADIGIT/';
+const BRAND = '#1e2a4a';
+
+const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const nl2br = (s) => esc(s).replace(/\n/g, '<br>');
+const greeting = (who) => `Hi ${esc(who || 'there')},`;
+
+function factSheet(rows) {
+  const trs = rows.map(([label, value]) => `
+<tr>
+<td style="padding:6px 0;color:#6b7280;font-size:13px;width:38%;vertical-align:top;">${esc(label)}</td>
+<td style="padding:6px 0;color:#1f2937;font-size:13.5px;font-weight:600;vertical-align:top;">${nl2br(value)}</td>
+</tr>`).join('');
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #eef0f3;border-radius:8px;padding:14px 16px;margin:14px 0;">${trs}</table>`;
+}
+
+function shell(bodyHtml) {
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Segoe UI,Helvetica,Arial,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0;">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+<tr><td style="background:${BRAND};padding:20px 28px;">
+<span style="color:#ffffff;font-size:18px;font-weight:700;letter-spacing:0.2px;">SacraDigit</span><br>
+<span style="color:#b6bdca;font-size:12px;">Our Lady of Fatima Parish</span>
+</td></tr>
+<tr><td style="padding:28px 28px 8px;color:#1f2937;font-size:14.5px;line-height:1.6;">
+${bodyHtml}
+</td></tr>
+<tr><td style="padding:20px 28px 28px;">
+<a href="${SITE_URL}" style="display:inline-block;background:${BRAND};color:#ffffff;text-decoration:none;font-size:13px;font-weight:600;padding:10px 18px;border-radius:8px;">Open SacraDigit</a>
+</td></tr>
+<tr><td style="padding:16px 28px;background:#f9fafb;border-top:1px solid #eef0f3;color:#9ca3af;font-size:11.5px;line-height:1.5;">
+This is an automated message from SacraDigit. If anything above looks wrong, please contact the parish office.
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
+}
+
+function write(id, html) {
+  const doc = document.getElementById(id).contentWindow.document;
+  doc.open(); doc.write(html); doc.close();
+}
+
+// 1) service-update — confirmed
+write('f1', shell(`<p style="margin:0 0 4px;">${greeting('Maria Santos')}</p>
+<p style="margin:0 0 4px;">Good news — your <strong>${esc('Wedding Blessing')}</strong> request is confirmed.</p>
+${factSheet([
+  ['Service', 'Wedding Blessing'],
+  ['Date', 'November 14, 2026'],
+  ['Time', '10:00 AM'],
+  ['Location', 'Main Church'],
+  ['Contact', '+63 912 345 6789'],
+])}
+<p style="margin:0;color:#6b7280;font-size:13px;">You can see this anytime under "Requested Services" in SacraDigit.</p>`));
+
+// 2) service-update — declined
+write('f2', shell(`<p style="margin:0 0 12px;">${greeting('Juan Dela Cruz')}</p>
+<p style="margin:0 0 12px;">We're sorry — your <strong>${esc('House Blessing')}</strong> request could not be scheduled.</p>
+${factSheet([['Reason', 'No available slots on the requested date — please pick another date.']])}
+<p style="margin:0;color:#6b7280;font-size:13px;">Please contact the parish office if you have questions or would like to submit a new request.</p>`));
+
+// 3) certificate-ready
+write('f3', shell(`<p style="margin:0 0 12px;">${greeting('Ana Reyes')}</p>
+<p style="margin:0 0 4px;">Good news — your <strong>${esc('Baptismal Certificate')}</strong> request has been approved and is ready for pickup at the parish office.</p>
+<p style="margin:12px 0 0;color:#6b7280;font-size:13px;">You can see this anytime under "My Requests" in SacraDigit.</p>`));
+
+// 4) signup-code
+write('f4', shell(`<p style="margin:0 0 12px;">${greeting('Carlo Mendoza')}</p>
+<p style="margin:0 0 12px;">We just sent a 6-digit verification code to this email address to confirm your new SacraDigit parishioner account.</p>
+<p style="margin:0 0 12px;">Check your inbox (and spam folder) for a message from <strong>AWS Cognito</strong> and enter that code on the sign-up screen.</p>
+<p style="margin:0;color:#6b7280;font-size:13px;">If you didn't try to create a SacraDigit account, you can ignore this message.</p>`));
+</script>
+</body>
+</html>

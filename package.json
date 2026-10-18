@@ -23,6 +23,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "aws-amplify": "^6.20.0"
+    "aws-amplify": "^6.20.0",
+    "nodemailer": "^10.1.2"
   }
 }

@@ -8,6 +8,7 @@ import { donationTotals } from '../functions/donation-totals/resource';
 import { communityIntentions } from '../functions/community-intentions/resource';
 import { userAdmin } from '../functions/user-admin/resource';
 import { parishAssistantChat } from '../functions/parish-assistant-chat/resource';
+import { notifyParishioner } from '../functions/notify-parishioner/resource';
 
 /**
  * Role-based access. Roles are Cognito groups (see auth/resource.ts):
@@ -341,6 +342,36 @@ const schema = a.schema({
     .returns(a.boolean())
     .handler(a.handler.function(sendBookingEmail))
     .authorization(allow => [allow.authenticated()]),
+
+  // ---------- Parishioner email notifications ----------
+
+  // Replaces server/email-notifier's local-only Express proxy: the same
+  // job (Gmail via an App Password, not SES — SES production access was
+  // denied for this account, so it can only reach addresses manually
+  // verified in SES), but reachable from anywhere, not just localhost.
+  // signup-code/password-reset fire before the caller is signed in, so this
+  // allows guests at the schema level; the staff/self rules per kind are
+  // enforced in the function itself (see functions/notify-parishioner).
+  // detailsLines travels as a JSON string, same convention as
+  // chatWithAssistant's history/context above.
+  notifyParishioner: a.mutation()
+    .arguments({
+      kind: a.string().required(),
+      to: a.string().required(),
+      name: a.string(),
+      serviceType: a.string(),
+      certificateType: a.string(),
+      status: a.string(),
+      date: a.string(),
+      time: a.string(),
+      declineReason: a.string(),
+      location: a.string(),
+      contact: a.string(),
+      detailsLines: a.string(),
+    })
+    .returns(a.json())
+    .handler(a.handler.function(notifyParishioner))
+    .authorization(allow => [allow.publicApiKey(), allow.authenticated()]),
 
   // ---------- Parish Assistant chat ----------
 
