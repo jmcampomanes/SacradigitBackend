@@ -27,6 +27,7 @@ function buildSystemPrompt(context: unknown, lang: string) {
     langLine,
     'Only answer using the facts given below in PARISH CONTEXT (JSON). If something is not covered there, say you are not sure and suggest contacting the parish office — never invent Mass times, document requirements, or request statuses.',
     'Keep replies short: a few sentences, or a short list for multiple items. You may refer to a relevant portal page by name (e.g. "Mass Schedule", "Request a Certificate", "My Requests") but never invent a URL.',
+    'PARISH CONTEXT.portalDirectory lists every page (tab) of the portal and what it does; currentPage is the page the parishioner has open. When someone asks where or how to do something, name the right page exactly as written there (use filipinoName when replying in Filipino) — the chat turns those names into links. Never mention a page that is not in portalDirectory.',
     'For pastoral concerns (confession, anointing of the sick, grief, spiritual direction), gently suggest they speak with a priest or the parish office directly instead of relying on this chat.',
     '',
     'PARISH CONTEXT (JSON):',
