@@ -56,28 +56,36 @@ export const handler: Schema['chatWithAssistant']['functionHandler'] = async (ev
     { role: 'user', content: q },
   ];
 
-  const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
-      'X-Title': env.SITE_NAME || 'SacraDigit',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: env.OPENROUTER_MODEL || 'openai/gpt-4o',
-      messages,
-      temperature: 0.3,
-      max_tokens: 500,
-    }),
-  });
+  // Free OpenRouter models share a provider-side quota that can briefly
+  // 429 under load. Fall back to another free model rather than failing
+  // the whole chat turn.
+  const MODELS = [
+    env.OPENROUTER_MODEL || 'google/gemma-4-31b-it:free',
+    'nvidia/nemotron-3-super-120b-a12b:free',
+    'nvidia/nemotron-3.5-lightning:free',
+  ];
 
-  if (!upstream.ok) {
-    console.error('OpenRouter error', upstream.status, await upstream.text().catch(() => ''));
-    throw new Error('The assistant is unavailable right now');
+  for (const model of MODELS) {
+    const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
+        'X-Title': env.SITE_NAME || 'SacraDigit',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: 500 }),
+    });
+
+    if (!upstream.ok) {
+      console.error('OpenRouter error', model, upstream.status, await upstream.text().catch(() => ''));
+      if (upstream.status === 429) continue; // try the next free model
+      break;
+    }
+
+    const data = await upstream.json();
+    const reply = data.choices?.[0]?.message?.content?.trim();
+    if (reply) return reply;
   }
 
-  const data = await upstream.json();
-  const reply = data.choices?.[0]?.message?.content?.trim();
-  if (!reply) throw new Error('The assistant is unavailable right now');
-  return reply;
+  throw new Error('The assistant is unavailable right now');
 };
