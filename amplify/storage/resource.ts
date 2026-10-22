@@ -21,8 +21,12 @@ export const storage = defineStorage({
       allow.groups(['staff']).to(['read', 'write']), // Secretary: no delete
     ],
     // Profile photos — each signed-in identity only reaches its own folder.
+    // Staff accounts sign in through their Cognito group's IAM role (e.g. the
+    // admin group role), which the identity rule above doesn't cover, so the
+    // staff groups need their own grant for My Profile photos to upload.
     'avatars/{entity_id}/*': [
       allow.entity('identity').to(['read', 'write', 'delete']),
+      allow.groups(['admin', 'staff', 'itech', 'media']).to(['read', 'write', 'delete']),
     ],
   }),
 });
