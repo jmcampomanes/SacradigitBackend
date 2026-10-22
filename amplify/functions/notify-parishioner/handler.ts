@@ -157,11 +157,15 @@ ${declineReason ? factSheet([['Reason', declineReason]]) : ''}
       ...(contact ? [`Contact: ${contact}`] : []),
       ...detailsLines,
     ];
+    // 'approved' = the parish office approved a pending request; anything
+    // else (e.g. 'scheduled') = a booking confirmed without an approval step.
+    const approved = status === 'approved';
+    const verb = approved ? 'has been approved by the parish office' : 'is confirmed';
     return {
-      subject: `Confirmed: your ${service} request`,
-      text: `Hi ${who},\n\nGood news — your ${service} request is confirmed. Here are the details:\n\n${facts.join('\n')}\n\nYou can see this anytime under "Requested Services" in SacraDigit. If anything above looks wrong, please contact the parish office.\n\n— SacraDigit`,
+      subject: `${approved ? 'Approved' : 'Confirmed'}: your ${service} request`,
+      text: `Hi ${who},\n\nGood news — your ${service} request ${verb}. Here are the details:\n\n${facts.join('\n')}\n\nYou can see this anytime under "Requested Services" in SacraDigit. If anything above looks wrong, please contact the parish office.\n\n— SacraDigit`,
       html: shell(`<p style="margin:0 0 4px;">${greeting(who)}</p>
-<p style="margin:0 0 4px;">Good news — your <strong>${esc(service)}</strong> request is confirmed.</p>
+<p style="margin:0 0 4px;">Good news — your <strong>${esc(service)}</strong> request ${verb}.</p>
 ${factSheet(factRows)}
 <p style="margin:0;color:#6b7280;font-size:13px;">You can see this anytime under "Requested Services" in SacraDigit.</p>`),
     };
@@ -219,10 +223,10 @@ export const handler: Schema['notifyParishioner']['functionHandler'] = async (ev
     if (!isStaff(identity)) return { success: false, error: 'Staff sign-in required' };
   }
   if (kind === 'service-update') {
-    // Only staff can tell someone their request was declined — but a
-    // confirmation (scheduled) may come from the parishioner who just
+    // Only staff can tell someone their request was approved or declined —
+    // but a confirmation (scheduled) may come from the parishioner who just
     // booked it themselves, not just staff approving someone else's.
-    if (event.arguments.status === 'declined') {
+    if (event.arguments.status === 'declined' || event.arguments.status === 'approved') {
       if (!isStaff(identity)) return { success: false, error: 'Staff sign-in required' };
     } else {
       // Never trust the client's `to` for the self case — pull the
