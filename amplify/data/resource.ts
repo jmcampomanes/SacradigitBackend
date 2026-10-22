@@ -52,6 +52,7 @@ const schema = a.schema({
     status: a.enum(['pending', 'approved', 'released', 'rejected']),
     rejectionReason: a.string(),
     linkedRecordId: a.id(),
+    email: a.string(),           // parishioner's email for the "ready for pickup" notice
   }).authorization(allow => [
     allow.owner(),
     allow.groups(['admin']),
