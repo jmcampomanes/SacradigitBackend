@@ -569,6 +569,42 @@ const schema = a.schema({
     allow.groups(['itech']).to(['read']),
   ]),
 
+  // ---------- Faith Journey badges ----------
+
+  // Custom badges made by the Head Admin. 'auto' badges are earned by a rule
+  // the frontend evaluates against existing records; 'manual' ones are given
+  // by hand (see BadgeAward). group/tier/mode are plain strings on purpose:
+  // the frontend validates their values.
+  CustomBadge: a.model({
+    name: a.string().required(),
+    description: a.string(),
+    group: a.string(),        // 'mass' | 'giving' | 'community' | 'honors'
+    tier: a.string(),         // 'bronze' | 'silver' | 'gold'
+    icon: a.string(),         // icon key, e.g. 'crown', 'book', 'bell'
+    mode: a.string(),         // 'auto' | 'manual'
+    rule: a.json(),           // { kind, target, from?, to?, match?, ministry?, ministryLabel? }
+    active: a.boolean(),      // false = hidden from parishioners
+    createdByName: a.string(),
+  }).authorization((allow) => [
+    allow.authenticated().to(['read']),
+    allow.groups(['admin']).to(['create', 'read', 'update', 'delete']),
+    allow.groups(['staff', 'itech']).to(['read']),
+  ]),
+
+  // One row per manual badge given to a parishioner.
+  BadgeAward: a.model({
+    badgeId: a.id().required(),            // CustomBadge.id
+    parishionerKey: a.string().required(), // lowercased, trimmed, single-spaced full name
+    parishionerName: a.string(),
+    note: a.string(),
+    awardedOn: a.date(),
+    awardedByName: a.string(),
+  }).authorization((allow) => [
+    allow.authenticated().to(['read']),
+    allow.groups(['admin', 'staff']).to(['create', 'read', 'update', 'delete']),
+    allow.groups(['itech']).to(['read']),
+  ]),
+
   // ---------- Parish-wide summaries (no contact details) ----------
 
   // Honor roll: [{ name, key, streak }] — donors with 3+ consecutive months of
