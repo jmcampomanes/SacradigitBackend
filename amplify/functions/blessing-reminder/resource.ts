@@ -9,7 +9,10 @@ export const blessingReminder = defineFunction({
   // Reads Blessing records through the data API, so it lives in the data stack
   // (avoids a circular dependency between the function and data stacks).
   resourceGroupName: 'data',
+  // Same Gmail sender as notify-parishioner (SES can only reach addresses
+  // verified in SES, so it never reached most parishioners).
   environment: {
-    SENDER_EMAIL: secret('SENDER_EMAIL'),
+    GMAIL_USER: secret('GMAIL_USER'),
+    GMAIL_APP_PASSWORD: secret('GMAIL_APP_PASSWORD'),
   },
 });

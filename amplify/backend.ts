@@ -29,9 +29,10 @@ const backend = defineBackend({
 // its email attribute as-is.
 backend.auth.resources.cfnResources.cfnUserPool.addPropertyDeletionOverride('Schema');
 
-// Allow both email functions to send through SES using any verified
-// identity (email address or domain) in this account/region.
-for (const fn of [backend.sendBookingEmail, backend.blessingReminder]) {
+// Allow sendBookingEmail to send through SES using any verified identity
+// (email address or domain) in this account/region. (blessingReminder sends
+// through Gmail now, like notify-parishioner.)
+for (const fn of [backend.sendBookingEmail]) {
   const stack = Stack.of(fn.resources.lambda);
   fn.resources.lambda.addToRolePolicy(new PolicyStatement({
     actions: ['ses:SendEmail'],

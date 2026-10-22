@@ -106,6 +106,7 @@ const schema = a.schema({
     offering: a.float(),
     status: a.enum(['pending', 'scheduled', 'completed', 'cancelled', 'rejected']),
     cancelReason: a.string(),
+    email: a.string(),           // parishioner's email for cancelled / offered notices (optional)
   }).authorization(allow => [
     allow.owner(),
     allow.groups(['admin', 'staff']),
