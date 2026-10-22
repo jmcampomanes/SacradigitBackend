@@ -199,11 +199,15 @@ function isStaff(identity: AppSyncIdentityCognito | null) {
  * instead, keyed by the token's own username — never trust the client.
  */
 async function callerEmail(identity: AppSyncIdentityCognito | null): Promise<string> {
-  if (!identity?.username) return '';
+  return identity?.username ? emailForUsername(identity.username) : '';
+}
+
+/** A Cognito user's email, looked up by their username. */
+async function emailForUsername(username: string): Promise<string> {
   try {
     const res = await cognito.send(new AdminGetUserCommand({
       UserPoolId: env.AMPLIFY_AUTH_USERPOOL_ID,
-      Username: identity.username,
+      Username: username,
     }));
     return (res.UserAttributes?.find((a) => a.Name === 'email')?.Value || '').toLowerCase();
   } catch {
@@ -212,12 +216,21 @@ async function callerEmail(identity: AppSyncIdentityCognito | null): Promise<str
 }
 
 export const handler: Schema['notifyParishioner']['functionHandler'] = async (event) => {
-  const { kind, to } = event.arguments;
+  const { kind } = event.arguments;
   const build = KIND_BUILDERS[kind as Kind];
   if (!build) return { success: false, error: 'Unsupported notification kind' };
-  if (!EMAIL_RE.test(String(to || ''))) return { success: false, error: 'Invalid recipient email' };
 
   const identity = (event.identity ?? null) as AppSyncIdentityCognito | null;
+
+  // The pool signs in with email, so usernames are generated IDs: a record's
+  // owner is "<id>::<id>" and carries no email. Staff pass that owner ID as
+  // `to`, and the real address is looked up here.
+  let to = String(event.arguments.to || '').trim();
+  if (!EMAIL_RE.test(to) && isStaff(identity) && /^[\w-]{1,128}$/.test(to)) to = await emailForUsername(to);
+  if (!EMAIL_RE.test(to)) {
+    console.warn(`notifyParishioner: no usable recipient for ${kind}`);
+    return { success: false, error: 'Invalid recipient email' };
+  }
 
   if (kind === 'service-reminder' || kind === 'certificate-ready') {
     if (!isStaff(identity)) return { success: false, error: 'Staff sign-in required' };
@@ -233,7 +246,7 @@ export const handler: Schema['notifyParishioner']['functionHandler'] = async (ev
       // recipient from the verified identity's own email, so a
       // signed-in parishioner can only ever "confirm" their own address.
       const email = await callerEmail(identity);
-      if (!isStaff(identity) && email !== String(to).toLowerCase()) {
+      if (!isStaff(identity) && email !== to.toLowerCase()) {
         return { success: false, error: 'Sign-in required' };
       }
     }
