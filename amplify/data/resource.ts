@@ -606,6 +606,69 @@ const schema = a.schema({
     allow.groups(['itech']).to(['read']),
   ]),
 
+  // ---------- Columbary ----------
+
+  // One wall/section of niches laid out as a rows × columns grid.
+  ColumbarySection: a.model({
+    name: a.string().required(),
+    code: a.string().required(),   // short prefix in niche codes, e.g. "A" in "A-3-07"
+    rows: a.integer().required(),
+    columns: a.integer().required(),
+    rowPrices: a.json(),
+    blocked: a.json(),
+    taken: a.json(),
+    sortOrder: a.integer(),
+    note: a.string(),
+  }).authorization((allow) => [
+    allow.publicApiKey().to(['read']),
+    allow.authenticated().to(['read']),
+    allow.groups(['admin']).to(['create', 'read', 'update', 'delete']),
+    allow.groups(['staff']).to(['read', 'update']),
+    allow.groups(['itech']).to(['read']),
+  ]),
+
+  // One niche reserved for a family. status/paymentPlan are plain strings on
+  // purpose: the frontend validates their values. Owners can request and view
+  // their own reservation; only the parish office changes or removes it.
+  NicheReservation: a.model({
+    sectionId: a.id().required(),  // ColumbarySection.id
+    row: a.integer().required(),
+    col: a.integer().required(),
+    nicheCode: a.string().required(),
+    ownerName: a.string().required(),
+    ownerKey: a.string(),
+    contact: a.string(),
+    email: a.string(),
+    price: a.float(),
+    paymentPlan: a.string(),
+    status: a.string(),
+    notes: a.string(),
+    declineReason: a.string(),
+    occupants: a.json(),
+    firstUseDate: a.date(),
+    requestedOnline: a.boolean(),
+  }).authorization((allow) => [
+    allow.owner().to(['create', 'read']),
+    allow.groups(['admin', 'staff']).to(['create', 'read', 'update', 'delete']),
+    allow.groups(['itech']).to(['read']),
+  ]),
+
+  // Payments toward a NicheReservation. Parish office only — parishioners
+  // can't read these.
+  NichePayment: a.model({
+    reservationId: a.id().required(),  // NicheReservation.id
+    kind: a.string(),
+    amount: a.float().required(),
+    paidOn: a.date(),
+    orNumber: a.string(),              // official receipt number
+    method: a.string(),
+    note: a.string(),
+    recordedByName: a.string(),
+  }).authorization((allow) => [
+    allow.groups(['admin', 'staff']).to(['create', 'read', 'update', 'delete']),
+    allow.groups(['itech']).to(['read']),
+  ]),
+
   // ---------- Parish-wide summaries (no contact details) ----------
 
   // Honor roll: [{ name, key, streak }] — donors with 3+ consecutive months of
