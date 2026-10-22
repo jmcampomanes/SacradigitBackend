@@ -56,35 +56,41 @@ export const handler: Schema['chatWithAssistant']['functionHandler'] = async (ev
     { role: 'user', content: q },
   ];
 
-  // Free OpenRouter models share a provider-side quota that can briefly
-  // 429 under load. Fall back to another free model rather than failing
-  // the whole chat turn.
-  const MODELS = [
+  // Free OpenRouter models are flaky: they 429 when the shared pool is
+  // busy and 404 when a provider pulls the model. Try each in turn on any
+  // failure rather than failing the whole chat turn.
+  const MODELS = [...new Set([
     env.OPENROUTER_MODEL || 'google/gemma-4-31b-it:free',
-    'nvidia/nemotron-3-super-120b-a12b:free',
+    'google/gemma-4-26b-a4b-it:free',
     'nvidia/nemotron-3.5-lightning:free',
-  ];
+    'nvidia/nemotron-3-super-120b-a12b:free',
+    'nvidia/nemotron-3-ultra-550b-a55b:free',
+  ])];
 
   for (const model of MODELS) {
-    const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
-        'X-Title': env.SITE_NAME || 'SacraDigit',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: 500 }),
-    });
+    try {
+      const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
+          'X-Title': env.SITE_NAME || 'SacraDigit',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: 500 }),
+      });
 
-    if (!upstream.ok) {
-      console.error('OpenRouter error', model, upstream.status, await upstream.text().catch(() => ''));
-      if (upstream.status === 429) continue; // try the next free model
-      break;
+      if (!upstream.ok) {
+        console.error('OpenRouter error', model, upstream.status, await upstream.text().catch(() => ''));
+        continue; // try the next free model
+      }
+
+      const data = await upstream.json();
+      const reply = data.choices?.[0]?.message?.content?.trim();
+      if (reply) return reply;
+      console.error('OpenRouter empty reply', model);
+    } catch (err) {
+      console.error('OpenRouter request failed', model, err);
     }
-
-    const data = await upstream.json();
-    const reply = data.choices?.[0]?.message?.content?.trim();
-    if (reply) return reply;
   }
 
   throw new Error('The assistant is unavailable right now');
