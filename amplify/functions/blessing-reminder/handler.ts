@@ -125,7 +125,10 @@ export const handler: EventBridgeHandler<'Scheduled Event', null, void> = async 
     limit: 200, nextToken,
   }));
   for (const it of intentions) {
-    const names = jsonList(it.names).map(String).join(', ');
+    // Each name is plain text, or {firstName, middleName, lastName, extension} from the newer form.
+    const names = jsonList(it.names).map((n) => (n && typeof n === 'object'
+      ? ['firstName', 'middleName', 'lastName', 'extension'].map((k) => (n as Record<string, unknown>)[k]).filter(Boolean).join(' ')
+      : String(n ?? ''))).filter(Boolean).join(', ');
     await send('mass-intention-update', it.email, {
       name: it.donor, status: 'offered', date: longDate(it.massDate!), time: it.massTime ?? '',
       detailsLines: [[it.type, names].filter(Boolean).join(': ')].filter(Boolean),
