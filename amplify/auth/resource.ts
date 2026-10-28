@@ -1,6 +1,7 @@
 import { defineAuth } from '@aws-amplify/backend';
 import { userAdmin } from '../functions/user-admin/resource';
 import { notifyParishioner } from '../functions/notify-parishioner/resource';
+import { setServerRoleFn } from '../functions/set-server-role/resource';
 
 /**
  * Roles are Cognito groups:
@@ -9,6 +10,9 @@ import { notifyParishioner } from '../functions/notify-parishioner/resource';
  *   itech – IT team (Sacra ITech portal)
  *   media – media team (Media portal)
  *   (no group) – parishioner: only their own records
+ *   server – verified Parish Server: still a parishioner, plus serving perks.
+ *            Lowest precedence, so a staff member's main role stays staff.
+ *            Added/removed by the Head Admin via setServerRole.
  */
 export const auth = defineAuth({
   loginWith: {
@@ -30,7 +34,7 @@ export const auth = defineAuth({
     givenName: { mutable: true, required: false },
     familyName: { mutable: true, required: false },
   },
-  groups: ['admin', 'staff', 'itech', 'media'],
+  groups: ['admin', 'staff', 'itech', 'media', 'server'],
   // Sacra ITech → Roles & Access (functions/user-admin).
   access: (allow) => [
     allow.resource(userAdmin).to([
@@ -45,5 +49,8 @@ export const auth = defineAuth({
     // notify-parishioner needs AdminGetUser to resolve the signed-in
     // caller's real email for the self-booking-confirmation check.
     allow.resource(notifyParishioner).to(['manageUsers']),
+    // Head Admin → Parish Servers: find the user by sub, then add/remove the
+    // "server" group only (functions/set-server-role).
+    allow.resource(setServerRoleFn).to(['listUsers', 'manageGroupMembership']),
   ],
 });

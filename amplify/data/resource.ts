@@ -7,6 +7,7 @@ import { faithfulGivers } from '../functions/faithful-givers/resource';
 import { donationTotals } from '../functions/donation-totals/resource';
 import { communityIntentions } from '../functions/community-intentions/resource';
 import { userAdmin } from '../functions/user-admin/resource';
+import { setServerRoleFn } from '../functions/set-server-role/resource';
 import { parishAssistantChat } from '../functions/parish-assistant-chat/resource';
 import { notifyParishioner } from '../functions/notify-parishioner/resource';
 
@@ -669,6 +670,32 @@ const schema = a.schema({
     allow.groups(['itech']).to(['read']),
   ]),
 
+  // ---------- Parish Servers ----------
+
+  // A parishioner who serves the parish applies to be verified. The Head Admin
+  // approves (and calls setServerRole to add the "server" group) or declines.
+  // status is a plain string on purpose: the frontend validates its values.
+  ServerApplication: a.model({
+    applicantKey: a.string().required(),   // the applicant's Cognito sub
+    applicantName: a.string().required(),
+    email: a.string(),
+    contact: a.string(),                   // 11-digit mobile, e.g. 09171234567
+    ministry: a.string().required(),       // 'Lectors', 'Parish office staff', …
+    role: a.string().required(),           // their role in it
+    servingSince: a.string(),              // year they started, e.g. '2019'
+    confirmWith: a.string().required(),    // coordinator / priest who can confirm
+    message: a.string(),
+    status: a.string(),                    // 'pending' | 'approved' | 'declined' | 'revoked'
+    reviewedBy: a.string(),
+    reviewedAt: a.datetime(),
+    reason: a.string(),                    // why declined / removed
+    validUntil: a.date(),                  // approved until (one year)
+  }).authorization((allow) => [
+    allow.owner().to(['create', 'read', 'delete']),   // apply, see own, withdraw
+    allow.groups(['admin']).to(['read', 'update', 'delete']),
+    allow.groups(['staff', 'itech']).to(['read']),
+  ]),
+
   // ---------- Parish-wide summaries (no contact details) ----------
 
   // Honor roll: [{ name, key, streak }] — donors with 3+ consecutive months of
@@ -736,6 +763,18 @@ const schema = a.schema({
     .returns(a.json())
     .handler(a.handler.function(userAdmin))
     .authorization(allow => [allow.groups(['itech'])]),
+
+  // { success } or { success: false, error }. Adds or removes ONLY the
+  // "server" group (verified Parish Server); handled by functions/set-server-role.
+  // (Not `on`: AppSync's parser rejects it as a name — it's a GraphQL keyword.)
+  setServerRole: a.mutation()
+    .arguments({
+      sub: a.string().required(),
+      enabled: a.boolean().required(),
+    })
+    .returns(a.json())
+    .handler(a.handler.function(setServerRoleFn))
+    .authorization(allow => [allow.groups(['admin'])]),
 
 })
 // Server-side functions that read data with IAM (not reachable from the browser).
