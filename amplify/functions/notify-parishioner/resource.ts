@@ -15,10 +15,9 @@ export const notifyParishioner = defineFunction({
     GMAIL_USER: secret('GMAIL_USER'),
     GMAIL_APP_PASSWORD: secret('GMAIL_APP_PASSWORD'),
   },
-  // Needs AdminGetUser (see auth/resource.ts's access grant) to resolve the
-  // signed-in caller's real email, so it lives in the auth stack, same as
-  // user-admin — assigning it to the data stack instead would make auth
-  // and data depend on each other (the access grant reaches into whichever
-  // stack owns this function's role).
-  resourceGroupName: 'auth',
+  // Reads Blessing and writes AccessLog through the data API for the 'received'
+  // send limit, so it lives in the data stack. AdminGetUser is added in
+  // backend.ts: a grant in auth/resource.ts would make auth and data depend on
+  // each other.
+  resourceGroupName: 'data',
 });

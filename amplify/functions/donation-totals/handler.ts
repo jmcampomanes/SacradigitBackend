@@ -12,6 +12,7 @@ const client = generateClient<Schema>();
 /**
  * Parish-wide giving per purpose: [{ purpose, total }], largest first.
  * Donations with no purpose are grouped under purpose: null. No names.
+ * Only verified gifts count; older rows have no status and count as verified.
  */
 export const handler: Schema['donationTotals']['functionHandler'] = async () => {
   const totals = new Map<string | null, number>();
@@ -19,12 +20,13 @@ export const handler: Schema['donationTotals']['functionHandler'] = async () => 
 
   do {
     const res = await client.models.Donation.list({
-      selectionSet: ['purpose', 'amount'],
+      selectionSet: ['purpose', 'amount', 'status'],
       limit: 1000,
       nextToken,
     });
     if (res.errors?.length) throw new Error(JSON.stringify(res.errors));
     for (const d of res.data) {
+      if (d.status && d.status !== 'verified') continue;
       const purpose = d.purpose?.trim() || null;
       totals.set(purpose, (totals.get(purpose) ?? 0) + (d.amount ?? 0));
     }

@@ -10,6 +10,16 @@ import { userAdmin } from '../functions/user-admin/resource';
 import { setServerRoleFn } from '../functions/set-server-role/resource';
 import { parishAssistantChat } from '../functions/parish-assistant-chat/resource';
 import { notifyParishioner } from '../functions/notify-parishioner/resource';
+import { createServiceRequestFn } from '../functions/create-service-request/resource';
+import { changeMyRequestFn } from '../functions/change-my-request/resource';
+import { submitServicePaymentFn } from '../functions/submit-service-payment/resource';
+import { submitDonationFn } from '../functions/submit-donation/resource';
+import { submitMassIntentionsFn } from '../functions/submit-mass-intentions/resource';
+import { submitServerApplicationFn } from '../functions/submit-server-application/resource';
+import { volunteerForSlotFn } from '../functions/volunteer-for-slot/resource';
+import { takeOverSlotFn } from '../functions/take-over-slot/resource';
+import { verifyRecordFn } from '../functions/verify-record/resource';
+import { voidUnpaid } from '../functions/void-unpaid/resource';
 
 /**
  * Role-based access. Roles are Cognito groups (see auth/resource.ts):
@@ -38,6 +48,7 @@ const schema = a.schema({
     status: a.enum(['digitized', 'processing', 'queued']),
     fileURL: a.string(),
     addedByName: a.string(),
+    birthdate: a.date(),         // used by verifyRecord
   }).authorization(allow => [
     allow.groups(['admin']),
     allow.groups(['staff']).to(['create', 'read', 'update']), // Secretary: no delete
@@ -108,6 +119,9 @@ const schema = a.schema({
     status: a.enum(['pending', 'scheduled', 'completed', 'cancelled', 'rejected']),
     cancelReason: a.string(),
     email: a.string(),           // parishioner's email for cancelled / offered notices (optional)
+    // Explicit, like MassCheckIn.owner: the Lambdas set it, and an implicit owner
+    // field leaves the create input once the owner rule loses 'create'.
+    owner: a.string(),
   }).authorization(allow => [
     allow.owner(),
     allow.groups(['admin', 'staff']),
@@ -138,10 +152,13 @@ const schema = a.schema({
     purpose: a.string(),
     date: a.date(),
     anonymous: a.boolean().default(false),
+    status: a.string(),          // 'submitted' | 'verified' | 'rejected'; empty = older, counts as verified
+    referenceNumber: a.string(),
+    owner: a.string(),           // explicit: see MassIntention.owner
   }).authorization(allow => [
     allow.owner(),
     allow.groups(['admin']),
-    allow.groups(['staff']).to(['create', 'read']), // Secretary records gifts; corrections are Head Admin only
+    allow.groups(['staff']).to(['create', 'read', 'update']), // Secretary records gifts and verifies payments
     allow.groups(['itech']).to(['read']),
   ]),
 
@@ -171,6 +188,7 @@ const schema = a.schema({
     deadline: a.date(),
     description: a.string(),
     active: a.boolean().default(true),
+    closedReason: a.string(),
   }).authorization(allow => [
     allow.authenticated().to(['read']),
     allow.groups(['admin']),
@@ -198,12 +216,15 @@ const schema = a.schema({
     contact: a.string(),
     notes: a.string(),
     details: a.json(),           // dynamic fields per service type (child's name, address, etc.)
-    status: a.enum(['pending', 'scheduled', 'completed', 'declined']),
+    // pending | temporary-approval | payment-submitted | scheduled | completed |
+    // declined | cancelled | void. A plain string: GraphQL enum values can't hold hyphens.
+    status: a.string(),
     preferredDate: a.date(),
     date: a.date(),
     time: a.string(),
     declineReason: a.string(),
     email: a.string(),           // parishioner's email for booking notifications (optional)
+    owner: a.string(),           // explicit: see MassIntention.owner
   }).authorization(allow => [
     allow.owner(),
     allow.groups(['admin', 'staff']),
@@ -239,6 +260,12 @@ const schema = a.schema({
     userName: a.string(),
     fileName: a.string(),
     action: a.string(),
+    actorRole: a.string(),
+    actorKey: a.string(),        // the staff member's sub
+    targetType: a.string(),
+    targetId: a.string(),
+    before: a.string(),          // JSON
+    after: a.string(),           // JSON
   }).authorization(allow => [
     allow.authenticated().to(['create']),
     allow.groups(['itech', 'admin']).to(['read']),
@@ -477,6 +504,12 @@ const schema = a.schema({
     address: a.string(),
     about: a.string(),
     avatarKey: a.string(),   // bare S3 path under avatars/{identityId}/..., resolved via getUrl()
+    // Sensitive personal information under RA 10173.
+    birthdate: a.date(),
+    sex: a.string(),
+    isPwd: a.boolean(),
+    pwdType: a.string(),
+    accommodations: a.string(),
   })
   .secondaryIndexes(index => [index('parishionerKey')])
   .authorization(allow => [
@@ -683,18 +716,176 @@ const schema = a.schema({
     ministry: a.string().required(),       // 'Lectors', 'Parish office staff', …
     role: a.string().required(),           // their role in it
     servingSince: a.string(),              // year they started, e.g. '2019'
-    confirmWith: a.string().required(),    // coordinator / priest who can confirm
+    confirmWith: a.string(),               // coordinator / priest; older rows only, the form no longer asks
     message: a.string(),
     status: a.string(),                    // 'pending' | 'approved' | 'declined' | 'revoked'
     reviewedBy: a.string(),
     reviewedAt: a.datetime(),
     reason: a.string(),                    // why declined / removed
     validUntil: a.date(),                  // approved until (one year)
+    conditions: a.json(),                  // [{ q, a: 'yes' | 'no' }]
+    isFirstTime: a.boolean(),
+    owner: a.string(),                     // explicit: see MassIntention.owner
   }).authorization((allow) => [
     allow.owner().to(['create', 'read', 'delete']),   // apply, see own, withdraw
     allow.groups(['admin']).to(['read', 'update', 'delete']),
     allow.groups(['staff', 'itech']).to(['read']),
   ]),
+
+  // ---------- Parish rules and payments ----------
+
+  // The app keeps ONE record: fees, time limits, distance bands, refund terms.
+  ParishSettings: a.model({
+    settings: a.json().required(),
+    updatedByName: a.string(),
+  }).authorization((allow) => [
+    allow.publicApiKey().to(['read']),   // the homepage shows the fees
+    allow.authenticated().to(['read']),
+    allow.groups(['admin']).to(['create', 'read', 'update', 'delete']),
+  ]),
+
+  PaymentRecord: a.model({
+    requestType: a.string().required(),  // 'Service' | 'Mass Intention' | 'Donation'
+    requestId: a.string().required(),
+    payerName: a.string().required(),
+    amount: a.float().required(),
+    method: a.string(),
+    referenceNumber: a.string(),         // empty for bank and cash gifts
+    status: a.string().required(),       // 'submitted' | 'verified' | 'rejected'
+    verifiedBy: a.string(),
+    verifiedAt: a.datetime(),
+    note: a.string(),                    // for Mass intentions: the record ids, comma separated
+    owner: a.string(),                   // explicit: see MassIntention.owner
+  }).authorization((allow) => [
+    allow.owner().to(['create', 'read']),
+    allow.groups(['admin']).to(['create', 'read', 'update', 'delete']),
+    allow.groups(['staff']).to(['create', 'read', 'update']),
+    allow.groups(['itech']).to(['read']),
+  ]),
+
+  ConsentRecord: a.model({
+    subjectKey: a.string().required(),   // the account's sub
+    purpose: a.string().required(),      // 'sign-up' | 'parish-server' | 'profile' | 'service-request'
+    version: a.string().required(),
+    acceptedAt: a.datetime().required(),
+  }).authorization((allow) => [
+    allow.owner().to(['create', 'read']),
+    allow.groups(['admin']).to(['read']),
+  ]),
+
+  MinistryCancellation: a.model({
+    ministry: a.string().required(),
+    massDate: a.date().required(),
+    massTime: a.string().required(),
+    volunteerId: a.string().required(),
+    volunteerName: a.string(),
+    reason: a.string().required(),
+    emergency: a.boolean(),
+  }).authorization((allow) => [
+    allow.owner().to(['create', 'read']),
+    allow.groups(['admin', 'staff']).to(['read', 'delete']),
+    allow.groups(['itech']).to(['read']),
+  ]),
+
+  // ---------- Parishioner writes the server checks ----------
+
+  // Each replies { success, data } or { success: false, error }. The handlers
+  // decide status, names and amounts themselves.
+  createServiceRequest: a.mutation()
+    .arguments({ input: a.json().required() })
+    .returns(a.json())
+    .handler(a.handler.function(createServiceRequestFn))
+    .authorization(allow => [allow.authenticated()]),
+
+  // action: 'cancel' | 'reschedule' | 'set-reminder'
+  changeMyRequest: a.mutation()
+    .arguments({
+      id: a.id().required(),
+      action: a.string().required(),
+      date: a.string(),
+      time: a.string(),
+      reason: a.string(),
+      reminder: a.string(),
+    })
+    .returns(a.json())
+    .handler(a.handler.function(changeMyRequestFn))
+    .authorization(allow => [allow.authenticated()]),
+
+  submitServicePayment: a.mutation()
+    .arguments({
+      requestId: a.id().required(),
+      method: a.string(),
+      referenceNumber: a.string(),
+    })
+    .returns(a.json())
+    .handler(a.handler.function(submitServicePaymentFn))
+    .authorization(allow => [allow.authenticated()]),
+
+  submitDonation: a.mutation()
+    .arguments({
+      amount: a.float().required(),
+      method: a.string(),
+      purpose: a.string(),
+      date: a.string(),
+      anonymous: a.boolean(),
+      referenceNumber: a.string(),
+    })
+    .returns(a.json())
+    .handler(a.handler.function(submitDonationFn))
+    .authorization(allow => [allow.authenticated()]),
+
+  submitMassIntentions: a.mutation()
+    .arguments({
+      records: a.json().required(),
+      amount: a.float().required(),
+      method: a.string(),
+      referenceNumber: a.string(),
+    })
+    .returns(a.json())
+    .handler(a.handler.function(submitMassIntentionsFn))
+    .authorization(allow => [allow.authenticated()]),
+
+  submitServerApplication: a.mutation()
+    .arguments({ input: a.json().required() })
+    .returns(a.json())
+    .handler(a.handler.function(submitServerApplicationFn))
+    .authorization(allow => [allow.authenticated()]),
+
+  // volunteerId, volunteerName and swapRequested are accepted but ignored:
+  // the volunteer is always the caller.
+  volunteerForSlot: a.mutation()
+    .arguments({
+      ministry: a.string().required(),
+      massDate: a.string().required(),
+      massTime: a.string().required(),
+      massTitle: a.string(),
+      volunteerId: a.string(),
+      volunteerName: a.string(),
+      swapRequested: a.boolean(),
+    })
+    .returns(a.json())
+    .handler(a.handler.function(volunteerForSlotFn))
+    .authorization(allow => [allow.authenticated()]),
+
+  takeOverSlot: a.mutation()
+    .arguments({ id: a.id().required() })
+    .returns(a.json())
+    .handler(a.handler.function(takeOverSlotFn))
+    .authorization(allow => [allow.authenticated()]),
+
+  // { match: false } or { match: true, recordId, fullName, dateOfEvent, officiant }.
+  verifyRecord: a.query()
+    .arguments({
+      certificateType: a.string().required(),
+      fullName: a.string(),
+      birthdate: a.string(),
+      groomName: a.string(),
+      brideName: a.string(),
+      eventDate: a.string(),
+    })
+    .returns(a.json())
+    .handler(a.handler.function(verifyRecordFn))
+    .authorization(allow => [allow.authenticated()]),
 
   // ---------- Parish-wide summaries (no contact details) ----------
 
@@ -785,6 +976,17 @@ const schema = a.schema({
   allow.resource(faithfulGivers).to(['query']),
   allow.resource(donationTotals).to(['query']),
   allow.resource(communityIntentions).to(['query']),
+  allow.resource(notifyParishioner).to(['query', 'mutate']),
+  allow.resource(createServiceRequestFn).to(['query', 'mutate']),
+  allow.resource(changeMyRequestFn).to(['query', 'mutate']),
+  allow.resource(submitServicePaymentFn).to(['query', 'mutate']),
+  allow.resource(submitDonationFn).to(['query', 'mutate']),
+  allow.resource(submitMassIntentionsFn).to(['query', 'mutate']),
+  allow.resource(submitServerApplicationFn).to(['query', 'mutate']),
+  allow.resource(volunteerForSlotFn).to(['query', 'mutate']),
+  allow.resource(takeOverSlotFn).to(['query', 'mutate']),
+  allow.resource(verifyRecordFn).to(['query', 'mutate']),
+  allow.resource(voidUnpaid).to(['query', 'mutate']),
 ]);
 
 export type Schema = ClientSchema<typeof schema>;

@@ -1,10 +1,18 @@
 import nodemailer from 'nodemailer';
 import type { AppSyncIdentityCognito } from 'aws-lambda';
+import { Amplify } from 'aws-amplify';
+import { generateClient } from 'aws-amplify/data';
+import { getAmplifyDataClientConfig } from '@aws-amplify/backend/function/runtime';
 import { CognitoIdentityProviderClient, AdminGetUserCommand } from '@aws-sdk/client-cognito-identity-provider';
 import type { Schema } from '../../data/resource';
 import { env } from '$amplify/env/notifyParishioner';
 import { EMAIL_RE, KIND_BUILDERS, clean, cleanLines, type BuilderInput, type Kind } from './emails';
+import { callerOf, claimLogSlot, listAll } from '../shared/parish';
 
+const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
+Amplify.configure(resourceConfig, libraryOptions);
+
+const client = generateClient<Schema>();
 const cognito = new CognitoIdentityProviderClient();
 
 /* ============================================
@@ -23,6 +31,8 @@ const cognito = new CognitoIdentityProviderClient();
    this function's job, same as the old server's.
    ============================================ */
 
+
+const MAX_RECEIVED_SENDS = 2;
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -47,13 +57,41 @@ async function callerEmail(identity: AppSyncIdentityCognito | null): Promise<str
 async function emailForUsername(username: string): Promise<string> {
   try {
     const res = await cognito.send(new AdminGetUserCommand({
-      UserPoolId: env.AMPLIFY_AUTH_USERPOOL_ID,
+      UserPoolId: process.env.USER_POOL_ID,
       Username: username,
     }));
     return (res.UserAttributes?.find((a) => a.Name === 'email')?.Value || '').toLowerCase();
   } catch {
     return '';
   }
+}
+
+/**
+ * "We received your request" may go to any address (the other person on a
+ * wedding), so it's tied to a request the caller really made, at most
+ * MAX_RECEIVED_SENDS times. Returns that request, or null when it's refused.
+ */
+async function claimReceivedSend(identity: AppSyncIdentityCognito | null, args: { serviceType?: string | null; date?: string | null; time?: string | null }) {
+  const caller = callerOf(identity);
+  if (!caller || !args.serviceType || !args.date || !args.time) return null;
+  const rows = await listAll((nextToken) => client.models.Blessing.list({
+    filter: {
+      owner: { eq: caller.owner }, type: { eq: args.serviceType! }, date: { eq: args.date! },
+      time: { eq: args.time! }, status: { eq: 'pending' },
+    },
+    limit: 1000, nextToken,
+  }));
+  const request = rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  if (!request) return null;
+  const claimed = await claimLogSlot(client, `received-email:${request.id}`, MAX_RECEIVED_SENDS, {
+    userName: request.requesterName,
+    fileName: `Booking: ${request.type} — ${request.requesterName}`,
+    action: 'Received email',
+    actorKey: caller.sub,
+    targetType: 'Blessing',
+    targetId: request.id,
+  });
+  return claimed ? request : null;
 }
 
 export const handler: Schema['notifyParishioner']['functionHandler'] = async (event) => {
@@ -73,15 +111,29 @@ export const handler: Schema['notifyParishioner']['functionHandler'] = async (ev
     return { success: false, error: 'Invalid recipient email' };
   }
 
+  // Filled in from the saved request when a parishioner sends 'received', so the
+  // browser can't choose the words that reach someone else's inbox.
+  let received: Awaited<ReturnType<typeof claimReceivedSend>> = null;
+
   if (kind !== 'signup-code' && kind !== 'password-reset' && !isStaff(identity)) {
     // Everything except the two sign-in courtesy notes is the parish office
-    // telling someone about their request — staff only. The one exception: a
+    // telling someone about their request — staff only. The exceptions: a
     // parishioner confirming their own self-booked slot (service-update,
-    // 'scheduled'). Never trust the client's `to` for that case — it must be
-    // the verified caller's own address.
-    const selfConfirm = kind === 'service-update' && event.arguments.status === 'scheduled';
-    if (!selfConfirm) return { success: false, error: 'Staff sign-in required' };
-    if (await callerEmail(identity) !== to.toLowerCase()) return { success: false, error: 'Sign-in required' };
+    // 'scheduled'), where `to` must be the verified caller's own address, and
+    // 'received', which is limited per request instead.
+    const { status } = event.arguments;
+    const selfConfirm = kind === 'service-update' && status === 'scheduled';
+    const isReceived = kind === 'service-update' && status === 'received';
+    if (!selfConfirm && !isReceived) return { success: false, error: 'Staff sign-in required' };
+    if (selfConfirm && await callerEmail(identity) !== to.toLowerCase()) return { success: false, error: 'Sign-in required' };
+    if (isReceived) {
+      try {
+        received = await claimReceivedSend(identity, event.arguments);
+      } catch (err) {
+        console.error(err);
+      }
+      if (!received) return { success: false, error: 'Could not send the email' };
+    }
   }
 
   const data: BuilderInput = {
@@ -95,6 +147,10 @@ export const handler: Schema['notifyParishioner']['functionHandler'] = async (ev
     location: clean(event.arguments.location, 200),
     contact: clean(event.arguments.contact, 60),
     detailsLines: cleanLines(JSON.parse(event.arguments.detailsLines || '[]')),
+    ...(received ? {
+      name: clean(received.requesterName, 100), serviceType: clean(received.type, 100),
+      location: clean(received.location, 200), contact: '', detailsLines: [],
+    } : {}),
   };
 
   try {

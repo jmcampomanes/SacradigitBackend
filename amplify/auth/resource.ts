@@ -1,6 +1,5 @@
 import { defineAuth } from '@aws-amplify/backend';
 import { userAdmin } from '../functions/user-admin/resource';
-import { notifyParishioner } from '../functions/notify-parishioner/resource';
 import { setServerRoleFn } from '../functions/set-server-role/resource';
 
 /**
@@ -44,11 +43,6 @@ export const auth = defineAuth({
       'listUsersInGroup',
       'listGroupsForUser',
     ]),
-    // The caller's access token (what AppSync actually verifies for
-    // allow.authenticated()) has no email claim — only the ID token does.
-    // notify-parishioner needs AdminGetUser to resolve the signed-in
-    // caller's real email for the self-booking-confirmation check.
-    allow.resource(notifyParishioner).to(['manageUsers']),
     // Head Admin → Parish Servers: find the user by sub, then add/remove the
     // "server" group only (functions/set-server-role).
     allow.resource(setServerRoleFn).to(['listUsers', 'manageGroupMembership']),

@@ -120,7 +120,10 @@ ${declineReason ? factSheet([['Reason', declineReason]]) : ''}
         subject: `Your ${service} has been cancelled`, who,
         lead: `We're sorry — the parish office has cancelled your ${service}${when ? ` on ${when}` : ''}.`,
         leadHtml: `We're sorry — the parish office has cancelled your <strong>${esc(service)}</strong>${when ? ` on <strong>${esc(when)}</strong>` : ''}.`,
-        facts: declineReason ? [['Reason', declineReason]] : [],
+        facts: [
+          ...(declineReason ? [['Reason', declineReason] as [string, string]] : []),
+          ...(detailsLines.length ? [['Details', detailsLines.join('\n')] as [string, string]] : []),
+        ],
         footer: 'Please contact the parish office if you have questions or would like to book again.',
       });
     }
@@ -133,6 +136,20 @@ ${declineReason ? factSheet([['Reason', declineReason]]) : ''}
 <p style="margin:0 0 4px;">Your <strong>${esc(service)}</strong> appointment${when ? ` on <strong>${esc(when)}</strong>` : ''} has been completed.</p>
 <p style="margin:12px 0 0;color:#6b7280;font-size:13px;">Thank you for trusting the parish with this. You can see this anytime under "Requested Services" in SacraDigit.</p>`),
       };
+    }
+    if (status === 'received') {
+      return simple({
+        subject: `We received your ${service} request`, who,
+        lead: 'We received your request. The parish office will review it and let you know.',
+        leadHtml: 'We received your request. The parish office will review it and let you know.',
+        facts: [
+          ['Service', service],
+          ['Date', date || 'TBD'],
+          ...(time ? [['Time', time] as [string, string]] : []),
+          ...(location ? [['Location', location] as [string, string]] : []),
+        ],
+        footer: "If you weren't expecting this, please contact the parish office.",
+      });
     }
     const factRows: Array<[string, string]> = [
       ['Service', service],
@@ -150,14 +167,16 @@ ${declineReason ? factSheet([['Reason', declineReason]]) : ''}
       ...(contact ? [`Contact: ${contact}`] : []),
       ...detailsLines,
     ];
-    // 'approved' = the parish office approved a pending request; 'rescheduled' =
-    // the office moved a booking (reason in declineReason); anything else
-    // (e.g. 'scheduled') = a booking confirmed without an approval step.
+    // 'approved' = the parish office approved a pending request, including a
+    // temporary approval (amount and deadline in detailsLines); 'rescheduled' =
+    // the office moved a booking or rejected a payment (reason in declineReason);
+    // anything else (e.g. 'scheduled') = a booking confirmed without an approval step.
     const approved = status === 'approved';
     const rescheduled = status === 'rescheduled';
-    if (rescheduled && declineReason) {
-      factRows.push(['Reason', declineReason]);
-      facts.push(`Reason: ${declineReason}`);
+    if ((approved || rescheduled) && declineReason) {
+      const label = approved ? 'Note' : 'Reason';
+      factRows.push([label, declineReason]);
+      facts.push(`${label}: ${declineReason}`);
     }
     const verb = approved ? 'has been approved by the parish office'
       : rescheduled ? 'has been moved to a new date by the parish office' : 'is confirmed';

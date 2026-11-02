@@ -28,5 +28,13 @@ export const storage = defineStorage({
       allow.entity('identity').to(['read', 'write', 'delete']),
       allow.groups(['admin', 'staff', 'itech', 'media']).to(['read', 'write', 'delete']),
     ],
+    // Documents sent with a service request. Each identity reaches only its own
+    // folder; the office reads them all. One path, like avatars/: Amplify refuses
+    // a parent path over one that holds {entity_id}. Not certificateUploads/:
+    // any signed-in user can read that.
+    'requirementUploads/{entity_id}/*': [
+      allow.entity('identity').to(['read', 'write', 'delete']),
+      allow.groups(['admin', 'staff']).to(['read']),
+    ],
   }),
 });

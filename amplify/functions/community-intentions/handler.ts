@@ -15,8 +15,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /**
  * Mass intentions offered between `from` and `to` (inclusive, YYYY-MM-DD),
  * across all parishioners, for the community intentions list. Only what is
- * read out at Mass is returned: no donor, no offering, no ids. Cancelled and
- * rejected intentions are left out.
+ * read out at Mass is returned: no donor, no offering, no ids. Cancelled,
+ * rejected and pending (payment not yet verified) intentions are left out.
  */
 export const handler: Schema['communityIntentions']['functionHandler'] = async (event) => {
   const { from, to } = event.arguments;
@@ -41,7 +41,7 @@ export const handler: Schema['communityIntentions']['functionHandler'] = async (
     });
     if (res.errors?.length) throw new Error(JSON.stringify(res.errors));
     for (const m of res.data) {
-      if (m.status === 'cancelled' || m.status === 'rejected') continue;
+      if (m.status === 'cancelled' || m.status === 'rejected' || m.status === 'pending') continue;
       intentions.push({
         massDate: m.massDate, massTime: m.massTime, type: m.type,
         names: m.names, startTime: m.startTime, endTime: m.endTime, status: m.status,

@@ -27,7 +27,8 @@ function previousMonth(ym: string): string {
 /**
  * Honor roll of donors who gave in at least MIN_STREAK consecutive calendar
  * months, ending this month or last month. Donation.date is already a local
- * (Manila) calendar date. Anonymous gifts and people who opted out
+ * (Manila) calendar date. Anonymous gifts, gifts not yet verified (older rows
+ * have no status and count as verified) and people who opted out
  * (ParishionerPreference.showOnHonorRoll === false) are left out.
  * Returns [{ name, key, streak }] — never amounts.
  */
@@ -37,13 +38,14 @@ export const handler: Schema['faithfulGivers']['functionHandler'] = async () => 
 
   do {
     const res = await client.models.Donation.list({
-      selectionSet: ['donor', 'date', 'anonymous'],
+      selectionSet: ['donor', 'date', 'anonymous', 'status'],
       limit: 1000,
       nextToken,
     });
     if (res.errors?.length) throw new Error(JSON.stringify(res.errors));
     for (const d of res.data) {
       if (d.anonymous || !d.donor?.trim() || !d.date) continue;
+      if (d.status && d.status !== 'verified') continue;
       const key = toKey(d.donor);
       let donor = donors.get(key);
       if (!donor) donors.set(key, donor = { name: '', lastDate: '', months: new Set() });

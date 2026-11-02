@@ -9,6 +9,8 @@ Amplify.configure(resourceConfig, libraryOptions);
 
 const client = generateClient<Schema>();
 
+const ENDED = new Set(['declined', 'void', 'cancelled']);
+
 const MAX_RANGE_DAYS = 400;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -18,7 +20,8 @@ type Slot = Schema['TakenSlot']['type'];
  * Returns which slots are taken, across all parishioners, between `from` and
  * `to` (inclusive, YYYY-MM-DD). Only the fields needed to detect double
  * booking are returned: no names, contacts, emails, notes or ids.
- * Declined bookings are left out because they don't hold a slot.
+ * Declined, void and cancelled bookings are left out because they don't hold
+ * a slot. Temporary approvals and submitted payments still do.
  */
 export const handler: Schema['takenSlots']['functionHandler'] = async (event) => {
   const { kind, from, to } = event.arguments;
@@ -41,7 +44,7 @@ export const handler: Schema['takenSlots']['functionHandler'] = async (event) =>
       });
       if (res.errors?.length) throw new Error(JSON.stringify(res.errors));
       for (const b of res.data) {
-        if (b.status === 'declined') continue;
+        if (ENDED.has(b.status ?? '')) continue;
         slots.push({ name: b.type, date: b.date, time: b.time, endTime: null, status: b.status });
       }
       nextToken = res.nextToken;
