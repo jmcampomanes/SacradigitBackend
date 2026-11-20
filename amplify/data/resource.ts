@@ -55,6 +55,58 @@ const schema = a.schema({
     allow.groups(['itech']).to(['read']),
   ]),
 
+  /**
+   * mock_data: pre-existing parishioners who have no account yet, each with a
+   * ready-made family tree, so an encoder typing a name gets the person's
+   * details and their parents, spouse(s), children and siblings filled in.
+   *
+   * Kept in its own table on purpose: nothing here is a Cognito user, and no
+   * account, role or parishioner-owned row is ever written to it. Staff only:
+   * a parishioner can't read it (it holds other people's details), and it is
+   * never used to sign anyone in.
+   *
+   * Names are stored as typed (for display) plus lower-case, accent-free keys
+   * for lookup. DynamoDB can only match a partition key exactly, so the search
+   * is "exact surname + first name that starts with what was typed":
+   *   lastKey   surname the person uses now      (a married woman's married name)
+   *   maidenKey surname she was born with        (what marriage and baptism registers use)
+   * The family tree is copied into `family` (JSON) so one read fills a whole form.
+   */
+  MockParishioner: a.model({
+    firstName: a.string().required(),
+    middleName: a.string(),
+    lastName: a.string().required(),
+    extension: a.string(),
+    maidenLastName: a.string(),   // birth surname when it differs from lastName
+    firstKey: a.string().required(),
+    lastKey: a.string().required(),
+    maidenKey: a.string().required(),
+    sex: a.string(),              // 'M' | 'F'
+    birthDate: a.date(),
+    birthPlace: a.string(),
+    deathDate: a.date(),
+    civilStatus: a.string(),
+    address: a.string(),
+    mobile: a.string(),
+    email: a.string(),
+    // { father, mother, spouses: [{ id, name, kind, weddingDate, weddingPlace, endReason, children: [...] }],
+    //   children: [...], siblings: [...] }   each person as { id, name: {firstName, middleName, lastName, extension}, birthDate, deathDate }
+    family: a.json(),
+    // Where the person was baptised / confirmed, when known: { baptism: {date, church}, confirmation: {...}, ... }
+    sacraments: a.json(),
+    source: a.string(),           // where the row came from, e.g. 'mock-community seed 20261030'
+    isMock: a.boolean(),
+  })
+  .secondaryIndexes((index) => [
+    index('lastKey').sortKeys(['firstKey']).queryField('mockParishionersByLastName'),
+    index('maidenKey').sortKeys(['firstKey']).queryField('mockParishionersByMaidenName'),
+  ])
+  .authorization(allow => [
+    allow.groups(['admin']),
+    allow.groups(['staff']).to(['create', 'read', 'update']), // Secretary: no delete
+    allow.groups(['itech']).to(['read']),
+  ]),
+
   CertificateRequest: a.model({
     requesterName: a.string().required(),
     certificateType: a.string().required(),
