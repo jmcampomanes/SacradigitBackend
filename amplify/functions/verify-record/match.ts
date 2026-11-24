@@ -13,13 +13,14 @@ export function normalizeName(name: unknown): string {
     .trim();
 }
 
-export type RecordType = 'baptism' | 'confirmation' | 'marriage' | 'death';
+export type RecordType = 'baptism' | 'confirmation' | 'first-communion' | 'marriage' | 'death';
 
-/** ParishRecord.type for a certificate's display name. First Communion has none. */
+/** ParishRecord.type for a certificate's display name. */
 export function recordTypeOf(certificateType: string): RecordType | null {
   if (/marriage/i.test(certificateType)) return 'marriage';
   if (/baptis/i.test(certificateType)) return 'baptism';
   if (/confirmation/i.test(certificateType)) return 'confirmation';
+  if (/first\s*communion/i.test(certificateType)) return 'first-communion';
   if (/death|burial/i.test(certificateType)) return 'death';
   return null;
 }

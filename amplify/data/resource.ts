@@ -19,6 +19,7 @@ import { submitServerApplicationFn } from '../functions/submit-server-applicatio
 import { volunteerForSlotFn } from '../functions/volunteer-for-slot/resource';
 import { takeOverSlotFn } from '../functions/take-over-slot/resource';
 import { verifyRecordFn } from '../functions/verify-record/resource';
+import { submitCertificateRequestFn } from '../functions/submit-certificate-request/resource';
 import { voidUnpaid } from '../functions/void-unpaid/resource';
 
 /**
@@ -41,7 +42,7 @@ import { voidUnpaid } from '../functions/void-unpaid/resource';
 const schema = a.schema({
 
   ParishRecord: a.model({
-    type: a.enum(['baptism', 'confirmation', 'marriage', 'death']),
+    type: a.string(),            // baptism | confirmation | first-communion | marriage | death (a hyphen isn't allowed in a GraphQL enum)
     fullName: a.string().required(),
     dateOfEvent: a.date(),
     officiant: a.string(),
@@ -51,7 +52,7 @@ const schema = a.schema({
     birthdate: a.date(),         // used by verifyRecord
   }).authorization(allow => [
     allow.groups(['admin']),
-    allow.groups(['staff']).to(['create', 'read', 'update']), // Secretary: no delete
+    allow.groups(['staff']).to(['create', 'read', 'update', 'delete']),
     allow.groups(['itech']).to(['read']),
   ]),
 
@@ -117,10 +118,13 @@ const schema = a.schema({
     rejectionReason: a.string(),
     linkedRecordId: a.id(),
     email: a.string(),           // parishioner's email for the "ready for pickup" notice
+    owner: a.string(),           // set by submitCertificateRequest; declared so a function can write it (owners can't create rows)
   }).authorization(allow => [
-    allow.owner(),
+    // Parishioners can't create or edit rows (a row could claim to be verified):
+    // requests are saved by submitCertificateRequest. They can still read and cancel their own.
+    allow.owner().to(['read', 'delete']),
     allow.groups(['admin']),
-    allow.groups(['staff']).to(['create', 'read', 'update']), // Secretary: no delete
+    allow.groups(['staff']).to(['create', 'read', 'update', 'delete']),
     allow.groups(['itech']).to(['read']),
   ]),
 
@@ -939,6 +943,14 @@ const schema = a.schema({
     .handler(a.handler.function(verifyRecordFn))
     .authorization(allow => [allow.authenticated()]),
 
+  // input: { certificateType, purpose, notes, details, verification?: { fullName, birthdate, groomName, brideName, eventDate } }
+  // Replies { success, data: <the saved CertificateRequest> } or { success: false, error }.
+  submitCertificateRequest: a.mutation()
+    .arguments({ input: a.json().required() })
+    .returns(a.json())
+    .handler(a.handler.function(submitCertificateRequestFn))
+    .authorization(allow => [allow.authenticated()]),
+
   // ---------- Parish-wide summaries (no contact details) ----------
 
   // Honor roll: [{ name, key, streak }] — donors with 3+ consecutive months of
@@ -1038,6 +1050,7 @@ const schema = a.schema({
   allow.resource(volunteerForSlotFn).to(['query', 'mutate']),
   allow.resource(takeOverSlotFn).to(['query', 'mutate']),
   allow.resource(verifyRecordFn).to(['query', 'mutate']),
+  allow.resource(submitCertificateRequestFn).to(['query', 'mutate']),
   allow.resource(voidUnpaid).to(['query', 'mutate']),
 ]);
 
