@@ -50,6 +50,16 @@ const schema = a.schema({
     fileURL: a.string(),
     addedByName: a.string(),
     birthdate: a.date(),         // used by verifyRecord
+    // Filled into the admin's Generate Certificate form through CertificateRequest.linkedRecordId.
+    // Staff and admin only; verifyRecord never returns them.
+    fatherName: a.json(),        // { firstName, middleName, lastName, extension }
+    motherName: a.json(),        // maiden name, same shape
+    sponsors: a.json(),          // [{ name: { firstName, middleName, lastName, extension }, role }]
+    birthplace: a.string(),
+    placeOfEvent: a.string(),    // place of baptism, marriage or death
+    bookNo: a.string(),
+    pageNo: a.string(),
+    lineNo: a.string(),
   }).authorization(allow => [
     allow.groups(['admin']),
     allow.groups(['staff']).to(['create', 'read', 'update', 'delete']),
