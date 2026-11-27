@@ -348,7 +348,10 @@ const schema = a.schema({
     codeExpires: a.string(),
     codeSentAt: a.string(),
     attempts: a.integer(),
-  }).identifier(['sub']),
+  }).identifier(['sub'])
+    // No browser access at all: the empty group matches nobody. The loginCode
+    // function reaches it through the schema-level allow.resource rule.
+    .authorization(allow => [allow.groups(['no-browser-access'])]),
 
   Role: a.model({
     role: a.string().required(),
