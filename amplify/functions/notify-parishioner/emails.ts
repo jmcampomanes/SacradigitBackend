@@ -267,3 +267,18 @@ ${facts.length ? factSheet(facts) : ''}
 <p style="margin:12px 0 0;color:#6b7280;font-size:13px;">${esc(footer)}</p>`),
   };
 }
+
+/** The 6-digit code for Extra sign-in protection (functions/login-code). */
+export function loginCodeEmail({ name, code, minutes, purpose }: { name: string; code: string; minutes: number; purpose: string }) {
+  const who = clean(name, 100) || 'there';
+  const why = purpose === 'enable' ? 'turn on Extra sign-in protection'
+    : purpose === 'disable' ? 'turn off Extra sign-in protection' : 'sign in to SacraDigit';
+  return {
+    subject: `Your SacraDigit code: ${code}`,
+    text: `Hi ${who},\n\nYour SacraDigit code is ${code}. Enter it to ${why}. It expires in ${minutes} minutes and works once.\n\nIf this wasn't you, don't share the code — and consider changing your password.\n\n— SacraDigit`,
+    html: shell(`<p style="margin:0 0 12px;">${greeting(who)}</p>
+<p style="margin:0 0 12px;">Enter this code to ${esc(why)}:</p>
+<p style="margin:0 0 16px;font-size:30px;font-weight:700;letter-spacing:8px;color:${BRAND};">${esc(code)}</p>
+<p style="margin:0;color:#6b7280;font-size:13px;">It expires in ${minutes} minutes and works once. If this wasn't you, don't share it — and consider changing your password.</p>`),
+  };
+}

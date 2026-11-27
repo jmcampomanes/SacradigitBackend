@@ -20,6 +20,7 @@ import { volunteerForSlotFn } from '../functions/volunteer-for-slot/resource';
 import { takeOverSlotFn } from '../functions/take-over-slot/resource';
 import { verifyRecordFn } from '../functions/verify-record/resource';
 import { submitCertificateRequestFn } from '../functions/submit-certificate-request/resource';
+import { loginCodeFn } from '../functions/login-code/resource';
 import { voidUnpaid } from '../functions/void-unpaid/resource';
 
 /**
@@ -337,6 +338,18 @@ const schema = a.schema({
     allow.groups(['itech', 'admin']).to(['read']),
   ]),
 
+  // Extra sign-in protection: one row per user, keyed by Cognito sub. Only the
+  // loginCode function (IAM, schema-level rule below) can read or write it, so
+  // the code hash never reaches the browser.
+  TwoFactor: a.model({
+    sub: a.string().required(),
+    enabled: a.boolean(),
+    codeHash: a.string(),
+    codeExpires: a.string(),
+    codeSentAt: a.string(),
+    attempts: a.integer(),
+  }).identifier(['sub']),
+
   Role: a.model({
     role: a.string().required(),
     permissions: a.json(),
@@ -468,6 +481,19 @@ const schema = a.schema({
     .returns(a.json())
     .handler(a.handler.function(notifyParishioner))
     .authorization(allow => [allow.publicApiKey(), allow.authenticated()]),
+
+  // Email a 6-digit code to the caller's own address and check it
+  // (functions/login-code). action: status | send | verify;
+  // purpose: signin | enable | disable.
+  loginCode: a.mutation()
+    .arguments({
+      action: a.string().required(),
+      purpose: a.string(),
+      code: a.string(),
+    })
+    .returns(a.json())
+    .handler(a.handler.function(loginCodeFn))
+    .authorization(allow => [allow.authenticated()]),
 
   // ---------- Parish Assistant chat ----------
 
@@ -1062,6 +1088,7 @@ const schema = a.schema({
   allow.resource(verifyRecordFn).to(['query', 'mutate']),
   allow.resource(submitCertificateRequestFn).to(['query', 'mutate']),
   allow.resource(voidUnpaid).to(['query', 'mutate']),
+  allow.resource(loginCodeFn).to(['query', 'mutate']),
 ]);
 
 export type Schema = ClientSchema<typeof schema>;

@@ -12,6 +12,7 @@ import { volunteerForSlotFn } from './functions/volunteer-for-slot/resource';
 import { takeOverSlotFn } from './functions/take-over-slot/resource';
 import { verifyRecordFn } from './functions/verify-record/resource';
 import { submitCertificateRequestFn } from './functions/submit-certificate-request/resource';
+import { loginCodeFn } from './functions/login-code/resource';
 import { Policy, PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Stack } from 'aws-cdk-lib';
 
@@ -36,6 +37,7 @@ const backend = defineBackend({
   takeOverSlotFn,
   verifyRecordFn,
   submitCertificateRequestFn,
+  loginCodeFn,
 });
 
 // Leave the user pool's attribute schema out of the template, matching the
@@ -63,7 +65,7 @@ for (const fn of [backend.sendBookingEmail]) {
 for (const fn of [
   backend.notifyParishioner, backend.createServiceRequestFn, backend.submitDonationFn,
   backend.submitMassIntentionsFn, backend.volunteerForSlotFn, backend.takeOverSlotFn, backend.verifyRecordFn,
-  backend.submitCertificateRequestFn,
+  backend.submitCertificateRequestFn, backend.loginCodeFn,
 ]) {
   fn.addEnvironment('USER_POOL_ID', backend.auth.resources.userPool.userPoolId);
   fn.resources.lambda.addToRolePolicy(new PolicyStatement({
